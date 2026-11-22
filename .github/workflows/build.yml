@@ -26,14 +26,6 @@ jobs:
           curl -sfL "$SOURCE_URL" | tar xz --exclude='./.github' --exclude='./voices/*.wav'
           git config user.name kishlay963 && git config user.email kishlay963@users.noreply.github.com
           git add -A && git commit -m "Import Chatterbox Studio source" && git push
-      - name: Fetch voice files (kept out of git; VOICES_URL secret = private blob link to voices.tgz)
-        env:
-          VOICES_URL: ${{ secrets.VOICES_URL }}
-        run: |
-          mkdir -p voices
-          if [ ! -f voices/kairav.wav ]; then curl -sfL "$VOICES_URL" | tar xz -C voices; fi
-          ls -la voices
-          test -f voices/kairav.wav
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Build

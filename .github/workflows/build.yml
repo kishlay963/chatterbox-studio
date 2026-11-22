@@ -1,0 +1,49 @@
+name: build-and-push
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  packages: write
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space (the image is ~16 GB)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+                      /usr/local/.ghcup /opt/microsoft /usr/local/share/powershell /usr/share/swift /usr/local/julia* || true
+          sudo docker image prune -af || true
+          df -h /
+      - uses: actions/checkout@v4
+      - name: One-time source import (SOURCE_URL secret = private blob link to the source tarball)
+        if: ${{ hashFiles('app/server.py') == '' }}
+        env:
+          SOURCE_URL: ${{ secrets.SOURCE_URL }}
+        run: |
+          curl -sfL "$SOURCE_URL" | tar xz --exclude='./.github' --exclude='./voices/*.wav'
+          git config user.name kishlay963 && git config user.email kishlay963@users.noreply.github.com
+          git add -A && git commit -m "Import Chatterbox Studio source" && git push
+      - name: Fetch voice files (kept out of git; VOICES_URL secret = private blob link to voices.tgz)
+        env:
+          VOICES_URL: ${{ secrets.VOICES_URL }}
+        run: |
+          mkdir -p voices
+          if [ ! -f voices/kairav.wav ]; then curl -sfL "$VOICES_URL" | tar xz -C voices; fi
+          ls -la voices
+          test -f voices/kairav.wav
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build
+        run: |
+          IMG=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/chatterbox-studio
+          echo "IMG=$IMG" >> $GITHUB_ENV
+          DOCKER_BUILDKIT=1 docker build -t $IMG:latest -t $IMG:${GITHUB_SHA::7} .
+          docker images
+          df -h /
+      - name: Push
+        run: |
+          docker push $IMG:${GITHUB_SHA::7}
+          docker push $IMG:latest
